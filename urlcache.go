@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/getlantern/golog"
@@ -46,10 +45,7 @@ func Open(url string, cacheFile string, checkInterval time.Duration, onUpdate fu
 		checkInterval: checkInterval,
 		onUpdate:      onUpdate,
 	}
-	c.wg.Add(1)
 	go c.keepCurrent(c.readInitial())
-	// Wait for first result
-	c.wg.Wait()
 
 	return nil
 }
@@ -59,13 +55,10 @@ type urlcache struct {
 	cacheFile     string
 	checkInterval time.Duration
 	onUpdate      func(io.Reader) error
-	wg            sync.WaitGroup
 }
 
-func (c *urlcache) readInitial() (time.Time, bool) {
+func (c *urlcache) readInitial() time.Time {
 	var currentDate time.Time
-	read := false
-
 	file, err := os.Open(c.cacheFile)
 	if err == nil {
 		err = c.onUpdate(file)
@@ -75,17 +68,15 @@ func (c *urlcache) readInitial() (time.Time, bool) {
 			if err == nil {
 				log.Debugf("Successfully initialized from %v", c.cacheFile)
 				currentDate = fileInfo.ModTime()
-				read = true
-				c.wg.Done()
 				time.Sleep(c.checkInterval)
 			}
 		}
 	}
 
-	return currentDate, read
+	return currentDate
 }
 
-func (c *urlcache) keepCurrent(currentDate time.Time, readInitial bool) {
+func (c *urlcache) keepCurrent(currentDate time.Time) {
 	for {
 		headResp, err := http.Head(c.url)
 		if err != nil {
@@ -102,10 +93,6 @@ func (c *urlcache) keepCurrent(currentDate time.Time, readInitial bool) {
 				log.Errorf("Unable to update from web: %v", err)
 			} else {
 				currentDate = lm
-				if !readInitial {
-					c.wg.Done()
-					readInitial = true
-				}
 			}
 		}
 		time.Sleep(c.checkInterval)

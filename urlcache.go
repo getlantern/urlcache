@@ -68,7 +68,6 @@ func (c *urlcache) readInitial() time.Time {
 			if err == nil {
 				log.Debugf("Successfully initialized from %v", c.cacheFile)
 				currentDate = fileInfo.ModTime()
-				time.Sleep(c.checkInterval)
 			}
 		}
 	}

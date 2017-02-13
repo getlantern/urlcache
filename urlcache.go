@@ -80,20 +80,23 @@ func (c *urlcache) keepCurrent(currentDate time.Time) {
 		headResp, err := http.Head(c.url)
 		if err != nil {
 			log.Errorf("Unable to request modified of %v: %v", c.url, err)
+			goto sleep
 		}
 		lm, err := lastModified(headResp)
 		if err != nil {
 			log.Errorf("Unable to parse modified date for %v: %v", c.url, err)
+			goto sleep
 		}
 		if lm.After(currentDate) {
 			log.Debug("Updating from web")
 			err = c.updateFromWeb()
 			if err != nil {
 				log.Errorf("Unable to update from web: %v", err)
-			} else {
-				currentDate = lm
+				goto sleep
 			}
+			currentDate = lm
 		}
+	sleep:
 		time.Sleep(c.checkInterval)
 	}
 }

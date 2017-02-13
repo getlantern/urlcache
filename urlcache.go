@@ -3,6 +3,7 @@
 package urlcache
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -61,7 +62,7 @@ func (c *urlcache) readInitial() time.Time {
 	var currentDate time.Time
 	file, err := os.Open(c.cacheFile)
 	if err == nil {
-		err = c.onUpdate(file)
+		err = c.onUpdate(bufio.NewReader(file))
 		file.Close()
 		if err == nil {
 			fileInfo, err := file.Stat()
@@ -130,7 +131,7 @@ func (c *urlcache) updateFromWeb() error {
 		return fmt.Errorf("Unable to reopen tmpFile for reading: %v", err)
 	}
 	defer tmpFile.Close()
-	err = c.onUpdate(tmpFile)
+	err = c.onUpdate(bufio.NewReader(tmpFile))
 	if err != nil {
 		return fmt.Errorf("Unable to call onUpdate: %v", err)
 	}

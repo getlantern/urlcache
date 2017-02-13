@@ -61,4 +61,13 @@ func TestCache(t *testing.T) {
 	mx.RLock()
 	assert.Equal(t, 3, numUpdates)
 	mx.RUnlock()
+
+	// Just to make sure it doesn't panic when error happens fetching URL
+	openErr = Open("http://not-exist", filepath.Join(tmpDir, "inter", "cachefile"), 50*time.Millisecond, func(r io.Reader) error {
+		return nil
+	})
+	if !assert.NoError(t, openErr) {
+		return
+	}
+	time.Sleep(150 * time.Millisecond)
 }

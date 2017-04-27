@@ -130,14 +130,11 @@ func (c *urlcache) updateFromWeb() error {
 	if err != nil {
 		return fmt.Errorf("Unable to reopen tmpFile for reading: %v", err)
 	}
-	defer tmpFile.Close()
-	err = c.onUpdate(bufio.NewReader(tmpFile))
+	err = c.runUpdate(tmpFile)
 	if err != nil {
-		return fmt.Errorf("Unable to call onUpdate: %v", err)
+		return fmt.Errorf("Unable to call run: %v", err)
 	}
-	// On Windows if we don't close the temp file here we get an error saying
-	// the file is in use by another process. See https://github.com/getlantern/lantern-internal/issues/790
-	tmpFile.Close()
+
 	err = os.Remove(c.cacheFile)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("Unable to remove old cache file: %v", err)
@@ -145,6 +142,18 @@ func (c *urlcache) updateFromWeb() error {
 	err = os.Rename(tmpFile.Name(), c.cacheFile)
 	if err != nil {
 		return fmt.Errorf("Unable to move tmpFile to cacheFile: %v", err)
+	}
+	return nil
+}
+
+func (c *urlcache) runUpdate(tmpFile *os.File) error {
+	// On Windows if we don't close the temp file before renaming it we we get
+	// an error saying the file is in use by another process. See
+	// https://github.com/getlantern/lantern-internal/issues/790
+	defer tmpFile.Close()
+	err := c.onUpdate(bufio.NewReader(tmpFile))
+	if err != nil {
+		return fmt.Errorf("Unable to call onUpdate: %v", err)
 	}
 	return nil
 }

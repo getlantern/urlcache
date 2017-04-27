@@ -135,6 +135,8 @@ func (c *urlcache) updateFromWeb() error {
 	if err != nil {
 		return fmt.Errorf("Unable to call onUpdate: %v", err)
 	}
+	// On Windows if we don't close the temp file here we get an error saying
+	// the file is in use by another process. See https://github.com/getlantern/lantern-internal/issues/790
 	tmpFile.Close()
 	err = os.Remove(c.cacheFile)
 	if err != nil && !os.IsNotExist(err) {

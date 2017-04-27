@@ -135,6 +135,7 @@ func (c *urlcache) updateFromWeb() error {
 	if err != nil {
 		return fmt.Errorf("Unable to call onUpdate: %v", err)
 	}
+	tmpFile.Close()
 	err = os.Remove(c.cacheFile)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("Unable to remove old cache file: %v", err)

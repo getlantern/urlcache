@@ -113,35 +113,48 @@ func (c *urlcache) updateFromWeb() error {
 		return fmt.Errorf("Unable to update from web: %v", err)
 	}
 	defer resp.Body.Close()
-	tmpFile, err := ioutil.TempFile("", "urlcache")
-	if err != nil {
-		return fmt.Errorf("Unable to create temp file: %v", err)
-	}
 
-	err = c.runUpdate(tmpFile)
+	tmpName, esave := c.saveToTmpFile(resp.Body)
+	if esave != nil {
+		return esave
+	}
+	err = c.runUpdate(tmpName)
 	if err != nil {
-		return fmt.Errorf("Unable to call run: %v", err)
+		return err
 	}
 
 	err = os.Remove(c.cacheFile)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("Unable to remove old cache file: %v", err)
 	}
-	err = os.Rename(tmpFile.Name(), c.cacheFile)
+	err = os.Rename(tmpName, c.cacheFile)
 	if err != nil {
 		return fmt.Errorf("Unable to move tmpFile to cacheFile: %v", err)
 	}
 	return nil
 }
 
-func (c *urlcache) runUpdate(tmpFile *os.File) error {
-	defer tmpFile.Close()
-	tmpFile, err := os.Open(tmpFile.Name())
+func (c *urlcache) saveToTmpFile(body io.Reader) (string, error) {
+	f, err := ioutil.TempFile("", "urlcache")
 	if err != nil {
-		return fmt.Errorf("Unable to reopen tmpFile for reading: %v", err)
+		return "", fmt.Errorf("Unable to create temp file: %v", err)
 	}
+	defer f.Close()
+	_, err = io.Copy(f, body)
+	if err != nil {
+		return "", fmt.Errorf("Unable to copy contents from web to temp file: %v", err)
+	}
+	return f.Name(), nil
+}
 
-	err = c.onUpdate(bufio.NewReader(tmpFile))
+func (c *urlcache) runUpdate(tmpName string) error {
+	f, err := os.Open(tmpName)
+	if err != nil {
+		return fmt.Errorf("Unable to reopen %s for reading: %v", tmpName, err)
+	}
+	defer f.Close()
+
+	err = c.onUpdate(bufio.NewReader(f))
 	if err != nil {
 		return fmt.Errorf("Unable to call onUpdate: %v", err)
 	}

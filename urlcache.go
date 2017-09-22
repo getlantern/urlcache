@@ -4,6 +4,7 @@ package urlcache
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -114,13 +115,23 @@ func (c *urlcache) updateFromWeb() error {
 	}
 	defer resp.Body.Close()
 
-	tmpName, esave := c.saveToTmpFile(resp.Body)
-	if esave != nil {
-		return esave
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("Unable to read data from web: %v", err)
 	}
-	err = c.runUpdate(tmpName)
+	err = c.onUpdate(bytes.NewReader(data))
 	if err != nil {
 		return err
+	}
+
+	tmpName, esave := c.saveToTmpFile(data)
+	if esave != nil {
+		log.Debugf("Unable to save to temp file, will write directly to destination: %v", esave)
+		f, openErr := os.OpenFile(c.cacheFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+		if openErr != nil {
+			return fmt.Errorf("Unable to open cache file: %v", openErr)
+		}
+		return c.saveToFile(f, data)
 	}
 
 	err = os.Remove(c.cacheFile)
@@ -134,29 +145,19 @@ func (c *urlcache) updateFromWeb() error {
 	return nil
 }
 
-func (c *urlcache) saveToTmpFile(body io.Reader) (string, error) {
+func (c *urlcache) saveToTmpFile(data []byte) (string, error) {
 	f, err := ioutil.TempFile("", "urlcache")
 	if err != nil {
 		return "", fmt.Errorf("Unable to create temp file: %v", err)
 	}
-	defer f.Close()
-	_, err = io.Copy(f, body)
-	if err != nil {
-		return "", fmt.Errorf("Unable to copy contents from web to temp file: %v", err)
-	}
-	return f.Name(), nil
+	return f.Name(), c.saveToFile(f, data)
 }
 
-func (c *urlcache) runUpdate(tmpName string) error {
-	f, err := os.Open(tmpName)
-	if err != nil {
-		return fmt.Errorf("Unable to reopen %s for reading: %v", tmpName, err)
-	}
+func (c *urlcache) saveToFile(f *os.File, data []byte) error {
 	defer f.Close()
-
-	err = c.onUpdate(bufio.NewReader(f))
+	_, err := f.Write(data)
 	if err != nil {
-		return fmt.Errorf("Unable to call onUpdate: %v", err)
+		return fmt.Errorf("Unable to copy contents from web to temp file: %v", err)
 	}
 	return nil
 }

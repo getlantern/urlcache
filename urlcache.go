@@ -165,5 +165,9 @@ func (c *urlcache) saveToFile(f *os.File, data []byte) error {
 // lastModified parses the Last-Modified header from a response
 func lastModified(resp *http.Response) (time.Time, error) {
 	lastModified := resp.Header.Get(lastModifiedHeader)
+	if lastModified == "" {
+		log.Debugf("No last-modified header, defaulting to old date to force download")
+		lastModified = "Fri, 09 Feb 1990 00:00:00 GMT"
+	}
 	return http.ParseTime(lastModified)
 }

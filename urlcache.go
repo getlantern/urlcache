@@ -146,9 +146,10 @@ func (c *urlcache) updateFromWeb() error {
 }
 
 func (c *urlcache) saveToTmpFile(data []byte) (string, error) {
-	f, err := ioutil.TempFile("", "urlcache")
+	tmpFileName := fmt.Sprintf("%v_temp", c.cacheFile)
+	f, err := os.OpenFile(tmpFileName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 	if err != nil {
-		return "", fmt.Errorf("Unable to create temp file: %v", err)
+		return "", fmt.Errorf("Unable to create temp file %v: %v", tmpFileName, err)
 	}
 	return f.Name(), c.saveToFile(f, data)
 }

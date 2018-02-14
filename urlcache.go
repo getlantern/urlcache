@@ -16,11 +16,6 @@ import (
 	"github.com/getlantern/golog"
 )
 
-const (
-	lastModifiedHeader = "Last-Modified"
-	etagHeader         = "ETag"
-)
-
 var (
 	log = golog.LoggerFor("urlcache")
 
@@ -47,6 +42,7 @@ func Open(url string, cacheFile string, checkInterval time.Duration, onUpdate fu
 		cacheFile:     cacheFile,
 		checkInterval: checkInterval,
 		onUpdate:      onUpdate,
+		client:        &http.Client{},
 	}
 	go c.keepCurrent(c.readInitial())
 
@@ -58,6 +54,7 @@ type urlcache struct {
 	cacheFile     string
 	checkInterval time.Duration
 	onUpdate      func(io.Reader) error
+	client        *http.Client
 }
 
 func (c *urlcache) readInitial() time.Time {
@@ -78,55 +75,55 @@ func (c *urlcache) readInitial() time.Time {
 	return currentDate
 }
 
-func (c *urlcache) keepCurrent(currentDate time.Time) {
-	currentETag := ""
+func (c *urlcache) keepCurrent(initialDate time.Time) {
+	var scheme cacheScheme
 	for {
-		currentDate, currentETag = c.checkUpdates(currentDate, currentETag)
+		scheme = c.checkUpdates(initialDate, scheme)
 		time.Sleep(c.checkInterval)
 	}
 }
 
-func (c *urlcache) checkUpdates(prevDate time.Time, prevETag string) (newDate time.Time, newETag string) {
-	headResp, err := http.Head(c.url)
-	if err != nil {
-		log.Errorf("Unable to request modified of %v: %v", c.url, err)
-		return
-	}
-
-	updateRequired := false
-	newETag = etag(headResp)
-	newDate, err = lastModified(headResp)
-	if err == nil {
-		updateRequired = newDate.After(prevDate)
-		if updateRequired {
-			log.Debugf("%v indicates file changed", lastModifiedHeader)
-		}
-	} else if newETag != "" {
-		updateRequired = newETag != prevETag
-		if updateRequired {
-			log.Debugf("%v indicates file changed", etagHeader)
-		}
-	} else {
-		log.Debug("Found neither modified date nor ETag, assuming file updated")
-		updateRequired = true
-	}
-
-	if updateRequired {
-		log.Debug("Updating from web")
-		err = c.updateFromWeb()
+func (c *urlcache) checkUpdates(initialDate time.Time, scheme cacheScheme) cacheScheme {
+	if scheme == nil {
+		log.Debugf("Cache scheme unknown, issue HEAD request to determine scheme")
+		headResp, err := http.Head(c.url)
 		if err != nil {
-			log.Errorf("Unable to update from web: %v", err)
-			return
+			log.Errorf("Unable to request modified of %v: %v", c.url, err)
+			return scheme
+		}
+
+		if headResp.Header.Get(lastModifiedHeader) != "" {
+			log.Debugf("Will use %v to determine when file changes", lastModifiedHeader)
+			scheme = &lastModifiedScheme{initialDate.Format(http.TimeFormat)}
+		} else if headResp.Header.Get(etagHeader) != "" {
+			log.Debugf("Will use %v to determine when file changes", etagHeader)
+			scheme = &etagScheme{}
+		} else {
+			log.Debug("Will always assume file changed")
+			scheme = &noopScheme{}
 		}
 	}
-	return
+
+	err := c.updateFromWeb(scheme)
+	if err != nil {
+		log.Errorf("Unable to update from web: %v", err)
+	}
+	return scheme
 }
 
-func (c *urlcache) updateFromWeb() error {
-	resp, err := http.Get(c.url)
+func (c *urlcache) updateFromWeb(scheme cacheScheme) error {
+	req, _ := http.NewRequest(http.MethodGet, c.url, nil)
+	scheme.prepareRequest(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("Unable to update from web: %v", err)
 	}
+	scheme.onResponse(resp)
+
+	if resp.StatusCode == http.StatusNotModified {
+		return nil
+	}
+
 	defer resp.Body.Close()
 
 	data, err := ioutil.ReadAll(resp.Body)

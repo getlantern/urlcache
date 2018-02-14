@@ -22,16 +22,23 @@ func TestCache(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	var mx sync.RWMutex
-	lastModified := time.Now()
+	lastModified := time.Now().Format(http.TimeFormat)
+	etag := ""
 	lastRead := ""
 	numUpdates := 0
 
 	s := httptest.NewServer(http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
 		mx.RLock()
 		lm := lastModified
+		et := etag
 		mx.RUnlock()
-		resp.Header().Set(lastModifiedHeader, lm.Format(http.TimeFormat))
-		resp.Write([]byte(lm.String()))
+		if lm != "" {
+			resp.Header().Set(lastModifiedHeader, lm)
+		}
+		if et != "" {
+			resp.Header().Set(etagHeader, et)
+		}
+		resp.Write([]byte(lm))
 	}))
 	defer s.Close()
 
@@ -49,11 +56,46 @@ func TestCache(t *testing.T) {
 		return
 	}
 
+	// Fetch based on Last-Modified
 	for i := 0; i < 3; i++ {
 		time.Sleep(150 * time.Millisecond)
 		mx.Lock()
-		assert.Equal(t, lastModified.String(), lastRead)
-		lastModified = lastModified.Add(1 * time.Hour)
+		assert.Equal(t, lastModified, lastRead)
+		lm, _ := time.Parse(http.TimeFormat, lastModified)
+		lastModified = lm.Add(1 * time.Hour).Format(http.TimeFormat)
+		numUpdates++
+		mx.Unlock()
+	}
+
+	mx.Lock()
+	assert.Equal(t, 3, numUpdates)
+	numUpdates = 0
+	lastModified = ""
+	etag = "a"
+	mx.Unlock()
+
+	// Fetch based on ETag
+	for i := 0; i < 3; i++ {
+		time.Sleep(150 * time.Millisecond)
+		mx.Lock()
+		assert.Equal(t, lastModified, lastRead)
+		etag = etag + etag
+		numUpdates++
+		mx.Unlock()
+	}
+
+	mx.Lock()
+	assert.Equal(t, 3, numUpdates)
+	numUpdates = 0
+	lastModified = ""
+	etag = ""
+	mx.Unlock()
+
+	// Fetch based on absence of headers
+	for i := 0; i < 3; i++ {
+		time.Sleep(150 * time.Millisecond)
+		mx.Lock()
+		assert.Equal(t, lastModified, lastRead)
 		numUpdates++
 		mx.Unlock()
 	}

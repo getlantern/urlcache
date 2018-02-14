@@ -18,6 +18,7 @@ import (
 
 const (
 	lastModifiedHeader = "Last-Modified"
+	etagHeader         = "ETag"
 )
 
 var (
@@ -78,32 +79,45 @@ func (c *urlcache) readInitial() time.Time {
 }
 
 func (c *urlcache) keepCurrent(currentDate time.Time) {
+	currentETag := ""
 	for {
-		currentDate = c.checkUpdates(currentDate)
+		currentDate, currentETag = c.checkUpdates(currentDate, currentETag)
 		time.Sleep(c.checkInterval)
 	}
 }
 
-func (c *urlcache) checkUpdates(prevDate time.Time) (newDate time.Time) {
-	newDate = prevDate
+func (c *urlcache) checkUpdates(prevDate time.Time, prevETag string) (newDate time.Time, newETag string) {
 	headResp, err := http.Head(c.url)
 	if err != nil {
 		log.Errorf("Unable to request modified of %v: %v", c.url, err)
 		return
 	}
-	lm, err := lastModified(headResp)
-	if err != nil {
-		log.Errorf("Unable to parse modified date for %v: %v", c.url, err)
-		return
+
+	updateRequired := false
+	newETag = etag(headResp)
+	newDate, err = lastModified(headResp)
+	if err == nil {
+		updateRequired = newDate.After(prevDate)
+		if updateRequired {
+			log.Debugf("%v indicates file changed", lastModifiedHeader)
+		}
+	} else if newETag != "" {
+		updateRequired = newETag != prevETag
+		if updateRequired {
+			log.Debugf("%v indicates file changed", etagHeader)
+		}
+	} else {
+		log.Debug("Found neither modified date nor ETag, assuming file updated")
+		updateRequired = true
 	}
-	if lm.After(prevDate) {
+
+	if updateRequired {
 		log.Debug("Updating from web")
 		err = c.updateFromWeb()
 		if err != nil {
 			log.Errorf("Unable to update from web: %v", err)
 			return
 		}
-		newDate = lm
 	}
 	return
 }
@@ -165,10 +179,9 @@ func (c *urlcache) saveToFile(f *os.File, data []byte) error {
 
 // lastModified parses the Last-Modified header from a response
 func lastModified(resp *http.Response) (time.Time, error) {
-	lastModified := resp.Header.Get(lastModifiedHeader)
-	if lastModified == "" {
-		log.Debugf("No last-modified header, defaulting to old date to force download")
-		lastModified = "Fri, 09 Feb 1990 00:00:00 GMT"
-	}
-	return http.ParseTime(lastModified)
+	return http.ParseTime(resp.Header.Get(lastModifiedHeader))
+}
+
+func etag(resp *http.Response) string {
+	return resp.Header.Get(etagHeader)
 }

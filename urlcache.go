@@ -13,11 +13,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/getlantern/golog"
+	"github.com/getlantern/zaplog"
 )
 
 var (
-	log = golog.LoggerFor("urlcache")
+	log = zaplog.LoggerFor("urlcache")
 
 	defaultCheckInterval = 1 * time.Minute
 )
@@ -66,7 +66,7 @@ func (c *urlcache) readInitial() time.Time {
 		if err == nil {
 			fileInfo, err := file.Stat()
 			if err == nil {
-				log.Debugf("Successfully initialized from %v", c.cacheFile)
+				log.Infof("Successfully initialized from %v", c.cacheFile)
 				currentDate = fileInfo.ModTime()
 			}
 		}
@@ -85,7 +85,7 @@ func (c *urlcache) keepCurrent(initialDate time.Time) {
 
 func (c *urlcache) checkUpdates(initialDate time.Time, scheme cacheScheme) cacheScheme {
 	if scheme == nil {
-		log.Debugf("Cache scheme unknown, issue HEAD request to determine scheme")
+		log.Infof("Cache scheme unknown, issue HEAD request to determine scheme")
 		headResp, err := http.Head(c.url)
 		if err != nil {
 			log.Errorf("Unable to request modified of %v: %v", c.url, err)
@@ -93,13 +93,13 @@ func (c *urlcache) checkUpdates(initialDate time.Time, scheme cacheScheme) cache
 		}
 
 		if headResp.Header.Get(lastModifiedHeader) != "" {
-			log.Debugf("Will use %v to determine when file changes", lastModifiedHeader)
+			log.Infof("Will use %v to determine when file changes", lastModifiedHeader)
 			scheme = &lastModifiedScheme{initialDate.Format(http.TimeFormat)}
 		} else if headResp.Header.Get(etagHeader) != "" {
-			log.Debugf("Will use %v to determine when file changes", etagHeader)
+			log.Infof("Will use %v to determine when file changes", etagHeader)
 			scheme = &etagScheme{}
 		} else {
-			log.Debug("Will always assume file changed")
+			log.Info("Will always assume file changed")
 			scheme = &noopScheme{}
 		}
 	}
@@ -137,7 +137,7 @@ func (c *urlcache) updateFromWeb(scheme cacheScheme) error {
 
 	tmpName, esave := c.saveToTmpFile(data)
 	if esave != nil {
-		log.Debugf("Unable to save to temp file, will write directly to destination: %v", esave)
+		log.Infof("Unable to save to temp file, will write directly to destination: %v", esave)
 		f, openErr := os.OpenFile(c.cacheFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 		if openErr != nil {
 			return fmt.Errorf("Unable to open cache file: %v", openErr)

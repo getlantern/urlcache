@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/getlantern/golog"
+	"github.com/getlantern/zaplog"
 )
 
 const (
@@ -21,7 +21,7 @@ const (
 )
 
 var (
-	log = golog.LoggerFor("urlcache")
+	log = zaplog.LoggerFor("urlcache")
 
 	defaultCheckInterval = 1 * time.Minute
 )
@@ -68,7 +68,7 @@ func (c *urlcache) readInitial() time.Time {
 		if err == nil {
 			fileInfo, err := file.Stat()
 			if err == nil {
-				log.Debugf("Successfully initialized from %v", c.cacheFile)
+				log.Infof("Successfully initialized from %v", c.cacheFile)
 				currentDate = fileInfo.ModTime()
 			}
 		}
@@ -97,7 +97,7 @@ func (c *urlcache) checkUpdates(prevDate time.Time) (newDate time.Time) {
 		return
 	}
 	if lm.After(prevDate) {
-		log.Debug("Updating from web")
+		log.Info("Updating from web")
 		err = c.updateFromWeb()
 		if err != nil {
 			log.Errorf("Unable to update from web: %v", err)
@@ -126,7 +126,7 @@ func (c *urlcache) updateFromWeb() error {
 
 	tmpName, esave := c.saveToTmpFile(data)
 	if esave != nil {
-		log.Debugf("Unable to save to temp file, will write directly to destination: %v", esave)
+		log.Infof("Unable to save to temp file, will write directly to destination: %v", esave)
 		f, openErr := os.OpenFile(c.cacheFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 		if openErr != nil {
 			return fmt.Errorf("Unable to open cache file: %v", openErr)
